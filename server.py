@@ -34,7 +34,6 @@ def load_and_index_data():
     Loads data from all .json.gz files in the 'data/' directory
     and indexes it by mobile number and email.
     """
-    # The 'data' folder will exist because Render clones your private repo
     data_files = glob.glob("data/*.json.gz")
     if not data_files:
         logger.warning("No data files found in the 'data/' directory. Did you create the folder and add your files?")
@@ -113,10 +112,20 @@ async def webhook():
         logger.error(f"Error in webhook: {e}")
         return "error", 500
 
-# Load data and set up webhook when the application starts
-with app.app_context():
+# --- Corrected Application Startup ---
+# This new block correctly handles the asyncio event loop
+# when running with a production server like Gunicorn.
+if __name__ != "__main__":
+    # When run by Gunicorn, load data and set up the webhook
     load_and_index_data()
-    asyncio.run(setup())
+    # Get the current event loop or create a new one
+    loop = asyncio.get_event_loop()
+    # Schedule the setup task to run in the existing loop
+    loop.run_until_complete(setup())
+
 
 if __name__ == "__main__":
+    # This block is for local development testing only
+    load_and_index_data()
+    asyncio.run(setup())
     app.run(port=int(os.environ.get("PORT", 8080)))
