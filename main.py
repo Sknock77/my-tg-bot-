@@ -4,36 +4,30 @@ import gzip
 import json
 import glob
 import threading
-import asyncio
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- Logging Setup ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# --- Environment Variables ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("FATAL: BOT_TOKEN environment variable is not set.")
     exit()
 
-# --- Data Loading and Indexing ---
 user_data_by_mobile = {}
 user_data_by_email = {}
 
 def load_and_index_data():
-    """Loads and indexes data from all .json.gz files in the 'data/' directory."""
-    logger.info("Starting data load and indexing...")
+    logger.info("Starting data load...")
     data_files = glob.glob("data/*.json.gz")
     if not data_files:
-        logger.warning("No data files found in 'data/' directory. Search will not work.")
+        logger.warning("No data files found in 'data/' directory.")
         return
-
     all_records = []
     for file_path in data_files:
         try:
@@ -43,66 +37,48 @@ def load_and_index_data():
                     all_records.extend(records)
         except Exception as e:
             logger.error(f"Failed to load or parse {file_path}: {e}")
-
     for record in all_records:
         if 'Mobile No' in record:
             user_data_by_mobile[str(record['Mobile No'])] = record
         if 'Email Contact' in record and record['Email Contact']:
             user_data_by_email[record['Email Contact'].lower()] = record
+    logger.info(f"Successfully indexed {len(all_records)} records.")
 
-    logger.info(f"Successfully loaded and indexed {len(all_records)} records.")
-
-# --- Bot Logic (to be run in a separate thread) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler for the /start command."""
     await update.message.reply_text("Bot is running. Use /search <mobile_or_email>.")
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler for the /search command."""
     if not context.args:
         await update.message.reply_text("Usage: `/search 9876543210`", parse_mode='MarkdownV2')
         return
-
     query = context.args[0].lower()
     result = user_data_by_mobile.get(query) or user_data_by_email.get(query)
-
     if result:
         message = "✅ **User Data Found**\n\n"
         for key, value in result.items():
-            key_safe = str(key).replace('-', '\\-').replace('.', '\\.').replace('!', '\\!').replace('(', '\\(').replace(')', '\\)')
-            value_safe = str(value).replace('-', '\\-').replace('!', '\\!').replace('.', '\\.').replace('(', '\\(').replace(')', '\\)')
+            key_safe = str(key).replace('-', '\\-').replace('.', '\\.')
+            value_safe = str(value).replace('-', '\\-').replace('.', '\\.')
             message += f"*{key_safe}:* `{value_safe}`\n"
         await update.message.reply_text(message, parse_mode='MarkdownV2')
     else:
         await update.message.reply_text("❌ No record found for that query.")
 
 def run_bot():
-    """Sets up and runs the bot's polling loop."""
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("search", search))
-    
     logger.info("Bot is starting to poll...")
     application.run_polling()
 
-# --- Flask App (to keep Render's Web Service alive) ---
 app = Flask(__name__)
-
 @app.route("/")
 def index():
-    """A simple endpoint to confirm the web server is running."""
-    return "Web server is running, bot is in the background."
+    return "Web server is running to keep the service alive."
 
 if __name__ == "__main__":
-    # Load the data from files once when the script starts
     load_and_index_data()
-
-    # Start the bot in a separate background thread
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
     bot_thread.start()
-
-    # Run the Flask web server in the main thread
-    # Render provides the PORT environment variable
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
