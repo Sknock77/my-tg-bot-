@@ -43,20 +43,18 @@ def load_and_index_data():
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # UPDATED: Handle dictionary format by taking its values
                 if isinstance(data, dict):
                     all_records.extend(data.values())
-                # Keep support for list format just in case
                 elif isinstance(data, list):
                     all_records.extend(data)
         except Exception as e:
             logger.error(f"Failed to load or parse {file_path}: {e}")
             
     for record in all_records:
-        # UPDATED: Use new field names 'phone' and 'email'
         if 'phone' in record:
             user_data_by_mobile[str(record['phone'])] = record
-        if 'email' in record and record['email']:
+        # UPDATED: Check if the email is a string before processing
+        if 'email' in record and isinstance(record['email'], str):
             user_data_by_email[record['email'].lower()] = record
             
     logger.info(f"Successfully indexed {len(all_records)} records.")
