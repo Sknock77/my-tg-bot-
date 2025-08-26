@@ -127,10 +127,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# UPDATED: Correct syntax for a FastAPI health check endpoint
 @app.get("/")
-def index():
+def index_get():
     return {"status": "Bot is running!"}
+
+# UPDATED: Add a specific handler for HEAD requests to satisfy Render's health check
+@app.head("/")
+def index_head():
+    return Response(status_code=200)
 
 @app.post("/webhook")
 async def webhook(request: Request):
