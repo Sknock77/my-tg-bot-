@@ -127,8 +127,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# UPDATED: Allow both GET and HEAD requests for the root endpoint
-@app.get("/", methods=["GET", "HEAD"])
+# UPDATED: Correct syntax for a FastAPI health check endpoint
+@app.get("/")
 def index():
     return {"status": "Bot is running!"}
 
