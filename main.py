@@ -3,22 +3,29 @@ import logging
 import gzip
 import json
 import glob
-import threading
-from flask import Flask
+import asyncio
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+# --- Logging Setup ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# --- Environment Variables ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-if not BOT_TOKEN:
-    logger.error("FATAL: BOT_TOKEN environment variable is not set.")
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+
+if not BOT_TOKEN or not RENDER_EXTERNAL_URL:
+    logger.error("FATAL: A required environment variable is not set.")
     exit()
 
+WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}/webhook"
+
+# --- Data Loading ---
 user_data_by_mobile = {}
 user_data_by_email = {}
 
@@ -44,8 +51,19 @@ def load_and_index_data():
             user_data_by_email[record['Email Contact'].lower()] = record
     logger.info(f"Successfully indexed {len(all_records)} records.")
 
+# --- Telegram Bot Setup ---
+# We initialize the bot application once
+tg_app = Application.builder().token(BOT_TOKEN).build()
+
+async def setup_bot():
+    """Initializes the bot and sets the webhook."""
+    await tg_app.initialize()
+    await tg_app.bot.set_webhook(url=WEBHOOK_URL, allowed_updates=Update.ALL_TYPES)
+    logger.info(f"Webhook set successfully to {WEBHOOK_URL}")
+
+# --- Bot Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot is running. Use /search <mobile_or_email>.")
+    await update.message.reply_text("Bot is running via webhook. Use /search <mobile_or_email>.")
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -63,22 +81,30 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ No record found for that query.")
 
-def run_bot():
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("search", search))
-    logger.info("Bot is starting to poll...")
-    application.run_polling()
+# Register handlers
+tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(CommandHandler("search", search))
 
+# --- Flask Web Server ---
 app = Flask(__name__)
+
+@app.before_serving
+async def startup():
+    """This function runs once before the server starts."""
+    load_and_index_data()
+    await setup_bot()
+
 @app.route("/")
 def index():
-    return "Web server is running to keep the service alive."
+    return "Bot is running!"
 
-if __name__ == "__main__":
-    load_and_index_data()
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+@app.route("/webhook", methods=["POST"])
+async def webhook():
+    """The main webhook endpoint that receives updates from Telegram."""
+    try:
+        update = Update.de_json(request.get_json(force=True), tg_app.bot)
+        await tg_app.process_update(update)
+        return "ok", 200
+    except Exception as e:
+        logger.error(f"Error in webhook: {e}")
+        return "error", 500
