@@ -1,5 +1,2 @@
 python-telegram-bot
-Flask[async]
-gunicorn
-httpx
-uvicorn
+Flask
