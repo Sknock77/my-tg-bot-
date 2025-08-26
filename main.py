@@ -53,7 +53,6 @@ def load_and_index_data():
     for record in all_records:
         if 'phone' in record:
             user_data_by_mobile[str(record['phone'])] = record
-        # UPDATED: Check if the email is a string before processing
         if 'email' in record and isinstance(record['email'], str):
             user_data_by_email[record['email'].lower()] = record
             
@@ -128,7 +127,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/")
+# UPDATED: Allow both GET and HEAD requests for the root endpoint
+@app.get("/", methods=["GET", "HEAD"])
 def index():
     return {"status": "Bot is running!"}
 
