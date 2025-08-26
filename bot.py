@@ -98,4 +98,4 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("search", search_cmd))
-    app.run_polling()
+ # app.run_polling()
