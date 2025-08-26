@@ -1,9 +1,7 @@
 import os
 import logging
-import gzip
 import json
 import glob
-import asyncio
 from fastapi import FastAPI, Request, Response
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -30,25 +28,31 @@ user_data_by_mobile = {}
 user_data_by_email = {}
 
 def load_and_index_data():
-    logger.info("Starting data load...")
-    data_files = glob.glob("data/*.json.gz")
+    """Loads and indexes data from all .json files in the 'datajson/' directory."""
+    logger.info("Starting data load from .json files...")
+    # Change 1: Look for .json files in the 'datajson' folder
+    data_files = glob.glob("datajson/*.json")
     if not data_files:
-        logger.warning("No data files found in 'data/' directory.")
+        logger.warning("No data files found in 'datajson/' directory.")
         return
+        
     all_records = []
     for file_path in data_files:
         try:
-            with gzip.open(file_path, 'rt', encoding='utf-8') as f:
+            # Change 2: Use regular `open` instead of `gzip.open`
+            with open(file_path, 'r', encoding='utf-8') as f:
                 records = json.load(f)
                 if isinstance(records, list):
                     all_records.extend(records)
         except Exception as e:
             logger.error(f"Failed to load or parse {file_path}: {e}")
+            
     for record in all_records:
         if 'Mobile No' in record:
             user_data_by_mobile[str(record['Mobile No'])] = record
         if 'Email Contact' in record and record['Email Contact']:
             user_data_by_email[record['Email Contact'].lower()] = record
+            
     logger.info(f"Successfully indexed {len(all_records)} records.")
 
 # --- Telegram Bot Setup ---
@@ -79,7 +83,6 @@ tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("search", search))
 
 # --- FastAPI Web Server ---
-# The lifespan function handles startup and shutdown events
 async def lifespan(app: FastAPI):
     # On startup
     load_and_index_data()
