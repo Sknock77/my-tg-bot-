@@ -32,7 +32,6 @@ def load_and_index_data():
     logger.info("Starting data load from .json files...")
     data_files = glob.glob("datajson/*.json")
     
-    # New: Add logging to see what files are found
     logger.info(f"Found data files: {data_files}")
 
     if not data_files:
@@ -43,17 +42,22 @@ def load_and_index_data():
     for file_path in data_files:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                records = json.load(f)
-                if isinstance(records, list):
-                    all_records.extend(records)
+                data = json.load(f)
+                # UPDATED: Handle dictionary format by taking its values
+                if isinstance(data, dict):
+                    all_records.extend(data.values())
+                # Keep support for list format just in case
+                elif isinstance(data, list):
+                    all_records.extend(data)
         except Exception as e:
             logger.error(f"Failed to load or parse {file_path}: {e}")
             
     for record in all_records:
-        if 'Mobile No' in record:
-            user_data_by_mobile[str(record['Mobile No'])] = record
-        if 'Email Contact' in record and record['Email Contact']:
-            user_data_by_email[record['Email Contact'].lower()] = record
+        # UPDATED: Use new field names 'phone' and 'email'
+        if 'phone' in record:
+            user_data_by_mobile[str(record['phone'])] = record
+        if 'email' in record and record['email']:
+            user_data_by_email[record['email'].lower()] = record
             
     logger.info(f"Successfully indexed {len(all_records)} records.")
 
@@ -62,7 +66,7 @@ tg_app = Application.builder().token(BOT_TOKEN).build()
 
 # --- Bot Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot is running. Use /search <mobile_or_email> or /stats.")
+    await update.message.reply_text("Bot is running. Use /search, /stats, or /debug.")
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -73,14 +77,13 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if result:
         message = "✅ **User Data Found**\n\n"
         for key, value in result.items():
-            key_safe = str(key).replace('-', '\\-').replace('.', '\\.')
+            key_safe = str(key).replace('_', '\\_').replace('-', '\\-').replace('.', '\\.')
             value_safe = str(value).replace('-', '\\-').replace('.', '\\.')
             message += f"*{key_safe}:* `{value_safe}`\n"
         await update.message.reply_text(message, parse_mode='MarkdownV2')
     else:
         await update.message.reply_text("❌ No record found for that query.")
 
-# New: Add a /stats command for diagnostics
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the number of records currently loaded in memory."""
     message = (
@@ -90,11 +93,27 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(message, parse_mode='MarkdownV2')
 
+async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lists files and folders to help diagnose data loading issues."""
+    try:
+        current_dir_files = os.listdir('.')
+        datajson_dir_files = os.listdir('datajson') if os.path.exists('datajson') else "Folder not found"
+        
+        message = (
+            f"🔍 **Debug Info**\n\n"
+            f"*Current Directory Contents:*\n`{current_dir_files}`\n\n"
+            f"*'datajson' Directory Contents:*\n`{datajson_dir_files}`"
+        )
+        await update.message.reply_text(message, parse_mode='MarkdownV2')
+    except Exception as e:
+        await update.message.reply_text(f"Error during debug: {e}")
+
 
 # Register handlers
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("search", search))
-tg_app.add_handler(CommandHandler("stats", stats)) # New: Register the stats handler
+tg_app.add_handler(CommandHandler("stats", stats))
+tg_app.add_handler(CommandHandler("debug", debug))
 
 # --- FastAPI Web Server ---
 async def lifespan(app: FastAPI):
