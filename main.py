@@ -30,16 +30,18 @@ user_data_by_email = {}
 def load_and_index_data():
     """Loads and indexes data from all .json files in the 'datajson/' directory."""
     logger.info("Starting data load from .json files...")
-    # Change 1: Look for .json files in the 'datajson' folder
     data_files = glob.glob("datajson/*.json")
+    
+    # New: Add logging to see what files are found
+    logger.info(f"Found data files: {data_files}")
+
     if not data_files:
-        logger.warning("No data files found in 'datajson/' directory.")
+        logger.warning("No data files found in 'datajson/' directory. Search will not work.")
         return
         
     all_records = []
     for file_path in data_files:
         try:
-            # Change 2: Use regular `open` instead of `gzip.open`
             with open(file_path, 'r', encoding='utf-8') as f:
                 records = json.load(f)
                 if isinstance(records, list):
@@ -60,7 +62,7 @@ tg_app = Application.builder().token(BOT_TOKEN).build()
 
 # --- Bot Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot is running. Use /search <mobile_or_email>.")
+    await update.message.reply_text("Bot is running. Use /search <mobile_or_email> or /stats.")
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -78,9 +80,21 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ No record found for that query.")
 
+# New: Add a /stats command for diagnostics
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays the number of records currently loaded in memory."""
+    message = (
+        f"📊 **Current Index Stats**\n\n"
+        f"Records indexed by mobile: `{len(user_data_by_mobile)}`\n"
+        f"Records indexed by email: `{len(user_data_by_email)}`"
+    )
+    await update.message.reply_text(message, parse_mode='MarkdownV2')
+
+
 # Register handlers
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("search", search))
+tg_app.add_handler(CommandHandler("stats", stats)) # New: Register the stats handler
 
 # --- FastAPI Web Server ---
 async def lifespan(app: FastAPI):
